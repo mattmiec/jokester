@@ -6,12 +6,12 @@ create table if not exists users (
 
 create table if not exists jokes (
     joke_id uuid not null primary key default gen_random_uuid(),
-    author_id uuid not null references users(user_id),
+    author_id uuid not null references users(user_id) on delete cascade,
     created timestamp with time zone not null,
     joke text not null
 );
 
 create table if not exists likes (
-    user_id uuid not null references users(user_id),
-    joke_id uuid not null references jokes(joke_id)
+    user_id uuid not null references users(user_id) on delete cascade,
+    joke_id uuid not null references jokes(joke_id) on delete cascade
 );
