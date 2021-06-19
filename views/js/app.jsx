@@ -77,7 +77,7 @@ class Home extends React.Component {
     this.WebAuth = new auth0.WebAuth({
       domain: AUTH0_DOMAIN,
       clientID: AUTH0_CLIENT_ID,
-      scope: "openid profile",
+      scope: "openid profile email",
       audience: AUTH0_API_AUDIENCE,
       responseType: "token id_token",
       redirectUri: AUTH0_CALLBACK_URL

@@ -1,67 +1,33 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/form3tech-oss/jwt-go"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-var jokes = []Joke{
-	Joke{1, 0, "Did you hear about the restaurant on the moon? Great food, no atmosphere."},
-	Joke{2, 0, "What do you call a fake noodle? An Impasta."},
-	Joke{3, 0, "How many apples grow on a tree? All of them."},
-	Joke{4, 0, "Want to hear a joke about paper? Nevermind it's tearable."},
-	Joke{5, 0, "I just watched a program about beavers. It was the best dam program I've ever seen."},
-	Joke{6, 0, "Why did the coffee file a police report? It got mugged."},
-	Joke{7, 0, "How does a penguin build it's house? Igloos it together."},
+type NewJokeContainer struct {
+	Joke string `json:"joke"`
 }
 
-var jwtMiddleWare *jwtmiddleware.JWTMiddleware
-
-// Jwks stores a slice of JSON Web Keys
-type Jwks struct {
-	Keys []JSONWebKeys `json:"keys"`
-}
-
-type JSONWebKeys struct {
-	Kty string   `json:"kty"`
-	Kid string   `json:"kid"`
-	Use string   `json:"use"`
-	N   string   `json:"n"`
-	E   string   `json:"e"`
-	X5c []string `json:"x5c"`
+type Joke struct {
+	Joke      string    `json:"joke"`
+	Author    string    `json:"author"`
+	Likes     int       `json:"likes"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 func main() {
-
-	db, err := DbConn()
-
-	if err != nil {
-		panic(err)
-	}
-
-	err = NewJokeDb(db, "Why did the chicken cross the road? \n\n To get to the other side!")
-
-	if err != nil {
-		panic(err)
-	}
-
-	jokes, err = ListJokesDb(db)
-
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(jokes)
 
 	// setup jwt middleware
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
@@ -87,6 +53,7 @@ func main() {
 			return result, nil
 		},
 		SigningMethod: jwt.SigningMethodRS256,
+		UserProperty:  "jwt",
 	})
 
 	// register our actual jwtMiddleware
@@ -110,15 +77,32 @@ func main() {
 	// Two routes
 	// /jokes - retrieves a list of jokes for a user
 	// / jokes/like/:jokeID - capture likes sent to a particular joke
-	api.GET("/jokes", authMiddleware(), JokeHandler)
-	api.POST("/jokes/like/:jokeID", authMiddleware(), LikeJoke)
+	api.GET("/jokes", authMiddleware(), userHandler(), ListJokes)
+	api.POST("/jokes/like/:jokeID", authMiddleware(), userHandler(), LikeJoke)
+	api.DELETE("/jokes/:jokeID", authMiddleware(), userHandler(), DeleteJoke)
+	api.POST("/jokes/new", authMiddleware(), userHandler(), NewJoke)
 
 	// Start and run the server
 	router.Run(":3000")
 }
 
-// JokeHandler retrieves a list of available jokes
-func JokeHandler(c *gin.Context) {
+// ListJokes retrieves a list of available jokes
+func ListJokes(c *gin.Context) {
+
+	db, err := DbConn()
+
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
+
+	jokes, err := ListJokesDb(db)
+
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
+
 	c.Header("Content-Type", "application/json")
 	c.JSON(http.StatusOK, jokes)
 }
@@ -127,61 +111,71 @@ func JokeHandler(c *gin.Context) {
 func LikeJoke(c *gin.Context) {
 	// confirm Joke ID sent is valid
 	// remember to import the `strconv` package
-	if jokeid, err := strconv.Atoi(c.Param("jokeID")); err == nil {
-		for i := 0; i < len(jokes); i++ {
-			if jokes[i].ID == jokeid {
-				jokes[i].Likes += 1
-			}
+	if jokeID, err := uuid.Parse(c.Param("jokeID")); err == nil {
+
+		db, err := DbConn()
+
+		if err != nil {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+			return
 		}
-		// return a pointer?? to the updates jokes list
-		c.JSON(http.StatusOK, &jokes)
+
+		userID := uuid.New()
+		err = LikeJokeDb(db, userID, jokeID)
+
+		if err != nil {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+			return
+		}
+
 	} else {
 		// Joke ID is invalid
 		c.AbortWithStatus(http.StatusNotFound)
 	}
 }
 
-// authMiddleware intercepts the requests, and check for a valid jwt token
-func authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Get the client secret key
-		err := jwtMiddleWare.CheckJWT(c.Writer, c.Request)
-		if err != nil {
-			// Token not found
-			fmt.Println(err)
-			c.Abort()
-			c.Writer.WriteHeader(http.StatusUnauthorized)
-			c.Writer.Write([]byte("Unauthorized"))
-			return
-		}
+func NewJoke(c *gin.Context) {
+
+	var newJokeContainer NewJokeContainer
+	err := c.BindJSON(&newJokeContainer)
+	if err != nil {
+		return
+	}
+
+	db, err := DbConn()
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
+
+	userID := uuid.New()
+	err = NewJokeDb(db, newJokeContainer.Joke, userID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
 	}
 }
 
-func getPemCert(token *jwt.Token) (string, error) {
-	cert := ""
-	resp, err := http.Get(os.Getenv("AUTH0_DOMAIN") + ".well-known/jwks.json")
-	if err != nil {
-		return cert, err
-	}
-	defer resp.Body.Close()
+func DeleteJoke(c *gin.Context) {
+	if _, err := strconv.Atoi(c.Param("jokeID")); err == nil {
 
-	var jwks = Jwks{}
-	err = json.NewDecoder(resp.Body).Decode(&jwks)
+		db, err := DbConn()
 
-	if err != nil {
-		return cert, err
-	}
-
-	x5c := jwks.Keys[0].X5c
-	for k, v := range x5c {
-		if token.Header["kid"] == jwks.Keys[k].Kid {
-			cert = "-----BEGIN CERTIFICATE-----\n" + v + "\n-----END CERTIFICATE-----"
+		if err != nil {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+			return
 		}
-	}
 
-	if cert == "" {
-		return cert, errors.New("unable to find appropriate key.")
-	}
+		jokeID := uuid.New()
+		err = DeleteJokeDb(db, jokeID)
 
-	return cert, nil
+		if err != nil {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+			return
+		}
+
+	} else {
+		// Joke ID is invalid
+		c.AbortWithStatus(http.StatusNotFound)
+	}
 }
