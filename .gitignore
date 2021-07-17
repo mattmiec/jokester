@@ -1,0 +1,5 @@
+.env
+.idea
+backend/src/__debug_bin
+frontend/dist
+frontend/node_modules

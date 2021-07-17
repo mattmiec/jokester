@@ -39,7 +39,10 @@ func main() {
 	router := gin.Default()
 
 	// Serve frontend static files
-	router.Use(static.Serve("/", static.LocalFile("../views", true)))
+	router.Use(static.Serve("/", static.LocalFile("../../frontend/dist", true)))
+
+	// CORS
+	router.Use(CORSMiddleware())
 
 	// Setup route group for the API
 	api := router.Group("/api")
@@ -63,6 +66,22 @@ func main() {
 
 	// Start and run the server
 	router.Run(":3000")
+}
+
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func NewUser(c *gin.Context) {

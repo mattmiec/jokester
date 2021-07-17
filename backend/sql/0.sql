@@ -13,5 +13,6 @@ create table if not exists jokes (
 
 create table if not exists likes (
     user_id uuid not null references users(user_id) on delete cascade,
-    joke_id uuid not null references jokes(joke_id) on delete cascade
+    joke_id uuid not null references jokes(joke_id) on delete cascade,
+    primary key(user_id, joke_id)
 );

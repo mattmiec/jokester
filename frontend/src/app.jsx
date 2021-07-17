@@ -1,3 +1,12 @@
+import './app.css';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import '@fortawesome/fontawesome-free/js/all.js';
+import '@fortawesome/fontawesome-free/css/all.css';
+import React from 'react';
+import ReactDOM from 'react-dom';
+import $ from 'jquery';
+import auth0 from 'auth0-js';
+
 const AUTH0_CLIENT_ID = "ceexXJ6MIeRzaqzbGNnlPK0tkLyygfx0";
 const AUTH0_DOMAIN = "mtmiec.us.auth0.com";
 const AUTH0_CALLBACK_URL = location.href;
@@ -9,7 +18,8 @@ class App extends React.Component {
       domain: AUTH0_DOMAIN,
       clientID: AUTH0_CLIENT_ID
     });
-    this.auth0.parseHash(window.location.hash, (err, authResult) => {
+    //this.auth0.parseHash(window.location.hash, (err, authResult) => {
+    this.auth0.parseHash((err, authResult) => {
       if (err) {
         return console.log(err);
       }
@@ -77,7 +87,7 @@ class Home extends React.Component {
     this.WebAuth = new auth0.WebAuth({
       domain: AUTH0_DOMAIN,
       clientID: AUTH0_CLIENT_ID,
-      scope: "openid profile email",
+      scope: "openid email",
       audience: AUTH0_API_AUDIENCE,
       responseType: "token id_token",
       redirectUri: AUTH0_CALLBACK_URL
@@ -159,8 +169,7 @@ class Joke extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      liked: "",
-      jokes: []
+      liked: ""
     };
     this.like = this.like.bind(this);
     this.serverRequest = this.serverRequest.bind(this);
@@ -174,7 +183,7 @@ class Joke extends React.Component {
   serverRequest(joke) {
     $.post(
       "http://localhost:3000/api/jokes/like/" + joke.id,
-      { like: 1 },
+      {},
       res => {
         console.log("res... ", res);
         this.setState({ liked: "Liked!", jokes: res });
@@ -189,13 +198,13 @@ class Joke extends React.Component {
         <div className="card">
           <div className="card-header">
             #{this.props.joke.id}{" "}
-            <span className="float-right">{this.state.liked}</span>
+            <span className="float-right">{this.props.joke.liked}</span>
           </div>
           <div className="card-body">{this.props.joke.joke}</div>
           <div className="card-footer">
             {this.props.joke.likes} Likes &nbsp;
             <button onClick={this.like} className="btn btn-outline-secondary">
-              <i className="fa fa-thumbs-o-up" aria-hidden="true"></i>
+              <i className="far fa-thumbs-up" aria-hidden="true"></i>
             </button>
           </div>
         </div>
@@ -204,4 +213,4 @@ class Joke extends React.Component {
   }
 }
 
-ReactDOM.render(<App />, document.getElementById('app'));
+ReactDOM.render(<App />, document.getRootNode().getElementById('app'));
