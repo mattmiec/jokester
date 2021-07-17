@@ -1,7 +1,7 @@
 create table if not exists users (
     user_id uuid not null primary key default gen_random_uuid(),
-    username text not null,
-    email text not null
+    openid_sub text not null unique,
+    username text not null
 );
 
 create table if not exists jokes (

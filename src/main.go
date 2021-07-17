@@ -1,11 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -16,48 +13,27 @@ import (
 	"github.com/google/uuid"
 )
 
+type NewUserContainer struct {
+	UserName string `json:"username"`
+}
+
 type NewJokeContainer struct {
 	Joke string `json:"joke"`
 }
 
 type Joke struct {
-	Joke      string    `json:"joke"`
-	Author    string    `json:"author"`
-	Likes     int       `json:"likes"`
-	CreatedAt time.Time `json:"createdAt"`
+	JokeID  uuid.UUID `json:"id"`
+	Joke    string    `json:"joke"`
+	Created time.Time `json:"created"`
+	Author  string    `json:"author"`
+	Likes   int       `json:"likes"`
+	Liked   bool      `json:"liked"`
 }
 
 func main() {
 
 	// setup jwt middleware
-	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
-		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-			aud := os.Getenv("AUTH0_API_AUDIENCE")
-			checkAudience := token.Claims.(jwt.MapClaims).VerifyAudience(aud, false)
-			if !checkAudience {
-				return token, errors.New("Invalid audience.")
-			}
-			// verify iss claim
-			iss := os.Getenv("AUTH0_DOMAIN")
-			checkIss := token.Claims.(jwt.MapClaims).VerifyIssuer(iss, false)
-			if !checkIss {
-				return token, errors.New("Invalid issuer.")
-			}
-
-			cert, err := getPemCert(token)
-			if err != nil {
-				log.Fatalf("could not get cert: %+v", err)
-			}
-
-			result, _ := jwt.ParseRSAPublicKeyFromPEM([]byte(cert))
-			return result, nil
-		},
-		SigningMethod: jwt.SigningMethodRS256,
-		UserProperty:  "jwt",
-	})
-
-	// register our actual jwtMiddleware
-	jwtMiddleWare = jwtMiddleware
+	jwtMiddleWare = jwtmiddleware.New(getMiddlewareOptions())
 
 	// Set the router as the Gin default
 	router := gin.Default()
@@ -74,29 +50,93 @@ func main() {
 			})
 		})
 	}
+
 	// Two routes
 	// /jokes - retrieves a list of jokes for a user
 	// / jokes/like/:jokeID - capture likes sent to a particular joke
-	api.GET("/jokes", authMiddleware(), userHandler(), ListJokes)
-	api.POST("/jokes/like/:jokeID", authMiddleware(), userHandler(), LikeJoke)
-	api.DELETE("/jokes/:jokeID", authMiddleware(), userHandler(), DeleteJoke)
-	api.POST("/jokes/new", authMiddleware(), userHandler(), NewJoke)
+	api.POST("/user", authMiddleware(), NewUser)
+	api.DELETE("/user", authMiddleware(), verifyUser(), DeleteUser)
+	api.GET("/jokes", authMiddleware(), verifyUser(), ListJokes)
+	api.POST("/jokes/like/:jokeID", authMiddleware(), verifyUser(), LikeJoke)
+	api.DELETE("/jokes/:jokeID", authMiddleware(), verifyUser(), DeleteJoke)
+	api.POST("/jokes/new", authMiddleware(), verifyUser(), NewJoke)
 
 	// Start and run the server
 	router.Run(":3000")
+}
+
+func NewUser(c *gin.Context) {
+	token, ok := c.Request.Context().Value("jwt").(*jwt.Token)
+	if !ok {
+		c.Abort()
+		c.String(http.StatusInternalServerError, "Error parsing jwt from context")
+		return
+	}
+
+	subject, ok := token.Claims.(jwt.MapClaims)["sub"]
+	if !ok {
+		c.Abort()
+		c.String(http.StatusInternalServerError, "Error parsing subject from jwt")
+		return
+	}
+
+	db, err := DbConn()
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
+
+	var newUserContainer NewUserContainer
+
+	err = c.BindJSON(&newUserContainer)
+	if err != nil {
+		c.String(http.StatusBadRequest, "Incorrect json body")
+		return
+	}
+
+	err = NewUserDb(db, subject.(string), newUserContainer.UserName)
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
+}
+
+func DeleteUser(c *gin.Context) {
+	userID, ok := c.Get("userID")
+	if !ok {
+		c.String(http.StatusInternalServerError, "Unable to retrieve userID from context")
+		return
+	}
+
+	db, err := DbConn()
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
+
+	err = DeleteUserDb(db, userID.(uuid.UUID))
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		return
+	}
 }
 
 // ListJokes retrieves a list of available jokes
 func ListJokes(c *gin.Context) {
 
 	db, err := DbConn()
-
 	if err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 		return
 	}
 
-	jokes, err := ListJokesDb(db)
+	userID, ok := c.Get("userID")
+	if !ok {
+		c.String(http.StatusInternalServerError, "Unable to retrieve userID from context")
+		return
+	}
+
+	jokes, err := ListJokesDb(db, userID.(uuid.UUID))
 
 	if err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
@@ -120,9 +160,13 @@ func LikeJoke(c *gin.Context) {
 			return
 		}
 
-		userID := uuid.New()
-		err = LikeJokeDb(db, userID, jokeID)
+		userID, ok := c.Get("userID")
+		if !ok {
+			c.String(http.StatusInternalServerError, "Unable to retrieve userID from context")
+			return
+		}
 
+		err = LikeJokeDb(db, userID.(uuid.UUID), jokeID)
 		if err != nil {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 			return
