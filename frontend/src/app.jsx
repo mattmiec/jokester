@@ -6,11 +6,11 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import $ from 'jquery';
 import auth0 from 'auth0-js';
+import {Home} from './home.jsx';
+import {LoggedIn} from './loggedin.jsx'
 
 const AUTH0_CLIENT_ID = "ceexXJ6MIeRzaqzbGNnlPK0tkLyygfx0";
 const AUTH0_DOMAIN = "mtmiec.us.auth0.com";
-const AUTH0_CALLBACK_URL = location.href;
-const AUTH0_API_AUDIENCE = "webapp0.mattmiec.com";
 
 class App extends React.Component {
   parseHash() {
@@ -75,141 +75,6 @@ class App extends React.Component {
       return <LoggedIn />;
     }
     return <Home />;
-  }
-}
-
-class Home extends React.Component {
-  constructor(props) {
-    super(props);
-    this.authenticate = this.authenticate.bind(this);
-  }
-  authenticate() {
-    this.WebAuth = new auth0.WebAuth({
-      domain: AUTH0_DOMAIN,
-      clientID: AUTH0_CLIENT_ID,
-      scope: "openid email",
-      audience: AUTH0_API_AUDIENCE,
-      responseType: "token id_token",
-      redirectUri: AUTH0_CALLBACK_URL
-    });
-    this.WebAuth.authorize();
-  }
-
-  render() {
-    return (
-      <div className="container">
-        <div className="row">
-          <div className="col-sm-8 offset-sm-2 jumbotron text-center">
-            <h1>Jokeish</h1>
-            <p>A load of Dad jokes XD</p>
-            <p>Sign in to get access </p>
-            <button
-              onClick={this.authenticate}
-              className="btn btn-primary btn-lg btn-block"
-            >
-              Sign In
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-}
-
-class LoggedIn extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      jokes: []
-    };
-
-    this.serverRequest = this.serverRequest.bind(this);
-    this.logout = this.logout.bind(this);
-  }
-
-  logout() {
-    localStorage.removeItem("id_token");
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("profile");
-    location.reload();
-  }
-
-  serverRequest() {
-    $.get("http://localhost:3000/api/jokes", res => {
-      this.setState({
-        jokes: res
-      });
-    });
-  }
-
-  componentDidMount() {
-    this.serverRequest();
-  }
-
-  render() {
-    return (
-      <div className="container">
-        <br />
-        <span className="float-right">
-          <button className onClick={this.logout} className="btn btn-secondary">Log out</button>
-        </span>
-        <h2>Jokeish</h2>
-        <p>Let's feed you with some funny Jokes!!!</p>
-        <div className="row align-items-start">
-            {this.state.jokes.map(function(joke, i) {
-              return <Joke key={i} joke={joke} />;
-            })}
-        </div>
-      </div>
-    );
-  }
-}
-
-class Joke extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      liked: ""
-    };
-    this.like = this.like.bind(this);
-    this.serverRequest = this.serverRequest.bind(this);
-  }
-
-  like() {
-    let joke = this.props.joke;
-    this.serverRequest(joke);
-  }
-
-  serverRequest(joke) {
-    $.post(
-      "http://localhost:3000/api/jokes/like/" + joke.id,
-      {},
-      res => {
-        console.log("res... ", res);
-        this.setState({ liked: "Liked!", jokes: res });
-        this.props.jokes = res;
-      }
-    );
-  }
-
-  render() {
-    return (
-      <div className="col-xs-4">
-        <div className="card">
-          <div className="card-header">
-            #{this.props.joke.id}{" "}
-            <span className="float-right">{this.props.joke.liked}</span>
-          </div>
-          <div className="card-body">{this.props.joke.joke}</div>
-          <div className="card-footer">
-            {this.props.joke.likes} Likes &nbsp;
-            <button onClick={this.like} className="btn btn-outline-secondary">
-              <i className="far fa-thumbs-up" aria-hidden="true"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 }
 

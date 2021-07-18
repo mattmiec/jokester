@@ -33,6 +33,5 @@ func DbConn() (*sql.DB, error) {
 		return nil, err
 	}
 
-	fmt.Println("connected!")
 	return db, err
 }

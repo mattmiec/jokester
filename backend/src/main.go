@@ -61,6 +61,7 @@ func main() {
 	api.DELETE("/user", authMiddleware(), verifyUser(), DeleteUser)
 	api.GET("/jokes", authMiddleware(), verifyUser(), ListJokes)
 	api.POST("/jokes/like/:jokeID", authMiddleware(), verifyUser(), LikeJoke)
+	api.POST("/jokes/unlike/:jokeID", authMiddleware(), verifyUser(), UnlikeJoke)
 	api.DELETE("/jokes/:jokeID", authMiddleware(), verifyUser(), DeleteJoke)
 	api.POST("/jokes/new", authMiddleware(), verifyUser(), NewJoke)
 
@@ -118,6 +119,8 @@ func NewUser(c *gin.Context) {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 		return
 	}
+
+	db.Close()
 }
 
 func DeleteUser(c *gin.Context) {
@@ -138,6 +141,8 @@ func DeleteUser(c *gin.Context) {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 		return
 	}
+
+	db.Close()
 }
 
 // ListJokes retrieves a list of available jokes
@@ -162,11 +167,12 @@ func ListJokes(c *gin.Context) {
 		return
 	}
 
+	db.Close()
+
 	c.Header("Content-Type", "application/json")
 	c.JSON(http.StatusOK, jokes)
 }
 
-// LikeJoke increments the likes of a particular joke Item
 func LikeJoke(c *gin.Context) {
 	// confirm Joke ID sent is valid
 	// remember to import the `strconv` package
@@ -190,6 +196,40 @@ func LikeJoke(c *gin.Context) {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 			return
 		}
+
+		db.Close()
+
+	} else {
+		// Joke ID is invalid
+		c.AbortWithStatus(http.StatusNotFound)
+	}
+}
+
+func UnlikeJoke(c *gin.Context) {
+	// confirm Joke ID sent is valid
+	// remember to import the `strconv` package
+	if jokeID, err := uuid.Parse(c.Param("jokeID")); err == nil {
+
+		db, err := DbConn()
+
+		if err != nil {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+			return
+		}
+
+		userID, ok := c.Get("userID")
+		if !ok {
+			c.String(http.StatusInternalServerError, "Unable to retrieve userID from context")
+			return
+		}
+
+		err = UnlikeJokeDb(db, userID.(uuid.UUID), jokeID)
+		if err != nil {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+			return
+		}
+
+		db.Close()
 
 	} else {
 		// Joke ID is invalid
@@ -217,6 +257,8 @@ func NewJoke(c *gin.Context) {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 		return
 	}
+
+	db.Close()
 }
 
 func DeleteJoke(c *gin.Context) {
@@ -236,6 +278,8 @@ func DeleteJoke(c *gin.Context) {
 			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 			return
 		}
+
+		db.Close()
 
 	} else {
 		// Joke ID is invalid
